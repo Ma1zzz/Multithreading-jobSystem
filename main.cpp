@@ -9,45 +9,6 @@
 
 int testVarible;
 
-void PrimeCalculation() {
-  std::atomic<int> count = 0;
-  parallelLoop(
-      2, 500000,
-      [&count](int n) {
-        bool isPrime = true;
-        for (int i = 2; i <= sqrt(n); i++) {
-          if (n % i == 0) {
-            isPrime = false;
-            break;
-          }
-        }
-        if (isPrime)
-          count++;
-      },
-      5, true);
-
-  std::cout << "Found " << count << " primes\n";
-}
-
-void PrimeCalculation2() {
-  std::atomic<int> count = 0;
-  parallelLoop(
-      2, 500000,
-      [&count](int n) {
-        bool isPrime = true;
-        for (int i = 2; i <= sqrt(n); i++) {
-          if (n % i == 0) {
-            isPrime = false;
-            break;
-          }
-        }
-        if (isPrime)
-          count++;
-      },
-      5, true);
-
-  std::cout << "Found " << count << " primes\n";
-}
 void PrimeCalculation3() {
   int count = 0;
   for (int n = 2; n < 500000; n++) {
@@ -109,10 +70,9 @@ int main() {
   for (int x = 0; x < 50000; x++) {
 
     // reqJobs(PrimeCalculation4);
-
     reqJobs(noCodeTest);
-    //     std::cout << x << std::endl;
-    //    noCodeTest();
+    //                 std::cout << x << std::endl;
+    //                noCodeTest();
     // PrimeCalculation4();
   }
   std::cout << "done adding jobs" << std::endl;
@@ -120,10 +80,11 @@ int main() {
   auto dur = duration_cast<std::chrono::microseconds>(rqe - rgestart);
   std::cout << "microseconds : " << dur.count() << std::endl;
 
-  //                                    PrimeCalculation3();
-  // doJobs();
-  // PrimeCalculation4();
+  //  sleep(1);
+  //  PrimeCalculation4();
 
+  // PrimeCalculation4();
+  // sleep(1);
   waitAllJobs();
   //  std::cout << "er noget her til " << std::endl;
 
