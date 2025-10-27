@@ -41,7 +41,7 @@ void PrimeCalculation4() {
   }
   // jobN++;
   //  std::cout << "job Number : " << jobN << std::endl;
-  // std::cout << "Found " << count << " primes\n";
+  //  std::cout << "Found " << count << " primes\n";
 }
 
 void noCodeTest() {}
@@ -71,9 +71,9 @@ int main() {
 
     // reqJobs(PrimeCalculation4);
     reqJobs(noCodeTest);
-    //                 std::cout << x << std::endl;
-    //                noCodeTest();
-    // PrimeCalculation4();
+    //                    std::cout << x << std::endl;
+    //                   noCodeTest();
+    //  PrimeCalculation4();
   }
   std::cout << "done adding jobs" << std::endl;
   auto rqe = std::chrono::high_resolution_clock::now();

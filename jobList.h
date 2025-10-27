@@ -14,10 +14,11 @@ struct jobData {
   void (*func)();
 };
 
-class listOfDynamicListsInt {
+template <typename func> class listOfDynamicListsInt {
 private:
   void **ptrToPtr;
 
+  func *dataType;
   size_t *capacity;
   size_t *currentSize;
   int *numberOfElements;
@@ -26,8 +27,7 @@ private:
   size_t pageSize;
 
   int numOfLists;
-  std::atomic<bool> canReedData;
-  bool canAddData;
+  std::mutex *mutexs;
 
 public:
   listOfDynamicListsInt(int num) {
@@ -36,6 +36,7 @@ public:
     currentSize = new size_t[num];
     capacity = new size_t[num];
     numberOfElements = new int[num];
+    mutexs = new std::mutex[num];
     // amoutOfData = (int *)malloc(sizeof(int) * 4);
     pageSize = sysconf(_SC_PAGESIZE);
 
@@ -50,7 +51,6 @@ public:
       currentSize[x] = 0;
     }
 
-    canReedData = true;
     /* for (int y = 0; y < num; y++) {
        std::cout << ptrToPtr[y] << std::endl;
        std::cout << numberOfElements[y] << std::endl;
@@ -66,12 +66,9 @@ public:
     }
   }
   void resize(int index, int amount) {
-    while (canAddData == false) {
-      std::this_thread::yield();
-    }
-    canReedData = false;
     // std::cout << "REZISE " << std::endl;
-    float bytesNeeded = amount * sizeof(int);
+    mutexs[index].lock();
+    float bytesNeeded = amount * sizeof(*dataType);
     int neededPages = static_cast<int>(std::ceil((bytesNeeded / pageSize)));
 
     void *newData =
@@ -90,10 +87,11 @@ public:
 
     // std::cout << "new ptr " << ptrToPtr[index] << std::endl;
     // std::cout << "new capacity in bytes : " << capacity[index] << std::endl;
-    canReedData = true;
+
+    mutexs[index].unlock();
   }
 
-  void add(int index, int *numToAdd) {
+  void add(int index, func input) {
 
     if (*currentSize == *capacity) {
       // std::cout << "GOING TO REZISE " << std::endl;
@@ -116,9 +114,9 @@ public:
     // std::cout << newptr << std::endl;
     numberOfElements[index]++;
     // amoutOfData[index]++;
-    currentSize[index] = numberOfElements[index] * 4;
+    currentSize[index] = numberOfElements[index] * sizeof(*dataType);
     // std::cout << currentSize[index] << std::endl;
-    memcpy(newptr, numToAdd, sizeof(int));
+    memcpy(newptr, &input, sizeof(*dataType));
   }
 
   bool isAtEnd(int threadIndex, int index) {
@@ -130,10 +128,9 @@ public:
     return false;
   }
 
-  int getJobIndex(int threadIndex, int number) {
-    canAddData = false;
-    while (canReedData == false) {
-      std::this_thread::yield();
+  /*int getJobIndex(int threadIndex, int number) {
+    /*while (canReedData == false) {
+        std::this_thread::yield();
     }
 
     // bool shoudBe = canReedData.load();
@@ -147,11 +144,30 @@ public:
     //}
     // while(!canReedData.compare_exchange_strong(shoudBe, TRUE));
 
-    canAddData = true;
+    // canAddData = true;
     return returnVal;
+  }*/
+
+  jobData getJob(int index, int number) {
+
+    /* while (canReedData[index] == false) {
+       std::this_thread::yield();
+     }
+       canResize[index] = false;*/
+    mutexs[index].lock();
+    int bytesToShift = number * sizeof(func);
+
+    void *pr = (char *)ptrToPtr[index] + bytesToShift;
+    // void *pr = reinterpret_cast<void *>((char *)data + bytesToShift);
+
+    auto tr = *(jobData *)pr;
+    // lockVal.fetch_sub(1);
+
+    mutexs[index].unlock();
+    return tr;
   }
 };
-
+/*
 class lockClass {
 private:
   std::atomic<int> *ptr;
@@ -210,7 +226,7 @@ public:
     /*jobda *test = (jobda *)input;
 
     test->job();*/
-
+/*
     if (currentSize == capacity) {
       resize(amoutDataStored + 500);
     }
@@ -235,85 +251,89 @@ public:
   void resize(int amount) {
     canReedData = false;
 
-     /*while (!canResize) {
+    /*while (!canResize) {
 
-       std::this_thread::yield();
-     }*/
-    while (lockVal != 0) {
       std::this_thread::yield();
-    }
-    float bytesNeeded = amount * sizeof(*dataType);
-    int neededPages = static_cast<int>(std::ceil((bytesNeeded / pageSize)));
+    }*/
+/* while (lockVal != 0) {
+   std::this_thread::yield();
+ }
+ float bytesNeeded = amount * sizeof(*dataType);
+ int neededPages = static_cast<int>(std::ceil((bytesNeeded / pageSize)));
 
-    //timeResized.fetch_add(1);
+ // timeResized.fetch_add(1);
 
-    void *newData =
-        mmap(nullptr, (neededPages * pageSize), PROT_READ | PROT_WRITE,
-             MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+ void *newData =
+     mmap(nullptr, (neededPages * pageSize), PROT_READ | PROT_WRITE,
+          MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
-    // kopir lige det gamle data over
-    // std::cout << currentSize << std::endl;
-    memcpy(newData, data, currentSize);
+ // kopir lige det gamle data over
+ // std::cout << currentSize << std::endl;
+ memcpy(newData, data, currentSize);
 
-    void *oldPtr = data;
-    data = nullptr;
+ void *oldPtr = data;
+ data = nullptr;
 
-    if (munmap(oldPtr, capacity) != 0) {
-      perror("munmap");
-    }
-    data = newData;
-    capacity = neededPages * pageSize;
-    // newData = nullptr;
-    //  std::cout << "new capacity in bytes : " << capacity << std::endl;
-    canReedData = true;
-  }
+ if (munmap(oldPtr, capacity) != 0) {
+   perror("munmap");
+ }
+ data = newData;
+ capacity = neededPages * pageSize;
+ // newData = nullptr;
+ //  std::cout << "new capacity in bytes : " << capacity << std::endl;
+ canReedData = true;
+}
 
-  void *getVal(int number) {
+void *getVal(int number) {
 
-    int bytesToShift = number * sizeof(*dataType);
+ int bytesToShift = number * sizeof(*dataType);
 
-    void *ptr = (char *)data + bytesToShift;
-    return ptr;
-  }
+ void *ptr = (char *)data + bytesToShift;
+ return ptr;
+}
 
-  jobData getJob(int number) {
+jobData getJob(int number) {
 
-    // std::cout << lockVal << std::endl;
-      while (canReedData == false) {
-          std::this_thread::yield();
-      }
+ // std::cout << lockVal << std::endl;
 
-      lockClass l_LockClass(&lockVal);
+   while (canReedData == false) {
+     std::this_thread::yield();
+   }
 
-  back:
+   lockClass l_LockClass(&lockVal);
 
-      //int temp = timeResized.load();
+ //lockVal.fetch_add(1);
 
-      // canResize = false;
-    //  lockClass l_LockClass(&lockVal);
+back:
 
-    // std::cout << lockVal << std::endl;
+ // int temp = timeResized.load();
 
-    //int temp = timeResized.load();
+ // canResize = false;
+ //  lockClass l_LockClass(&lockVal);
 
-    int bytesToShift = number * sizeof(*dataType);
+ // std::cout << lockVal << std::endl;
 
-    void *pr = (char *)data + bytesToShift;
-    // void *pr = reinterpret_cast<void *>((char *)data + bytesToShift);
+ // int temp = timeResized.load();
 
+ int bytesToShift = number * sizeof(*dataType);
 
-    return *(jobData *)pr;
-  }
+ void *pr = (char *)data + bytesToShift;
+ // void *pr = reinterpret_cast<void *>((char *)data + bytesToShift);
 
-  bool atEnd(int index) {
-    if (index == amoutDataStored) {
-      return true;
-    }
-    return false;
-  }
+ auto tr = *(jobData *)pr;
+ //lockVal.fetch_sub(1);
+ return tr;
+}
 
-  void clear() {
-    amoutDataStored = 0;
-    currentSize = 0;
-  }
-};
+bool atEnd(int index) {
+ if (index == amoutDataStored) {
+   return true;
+ }
+ return false;
+}
+
+void clear() {
+ amoutDataStored = 0;
+ currentSize = 0;
+}
+};*/
