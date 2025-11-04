@@ -1,10 +1,10 @@
-#define DEBUGMODE true
+#define DEBUGMODE false
 #include "jobs.h"
 #include "jobList.h"
+#include "thread"
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <functional>
 #include <iostream>
 #include <limits.h>
@@ -20,56 +20,31 @@ dispatch_semaphore_t *sems; //= dispatch_semaphore_create(0);
 #include <thread>
 #include <vector>
 
-/*struct jobData {
-  void (*func)();
-};*/
 
-static std::condition_variable threadConditio;
-static std::condition_variable isWorkDone;
 
 static bool shouldShutDown = false;
 
-static std::mutex jobsQueueMutex;
-static std::mutex mutex;
-
 static std::queue<std::function<void()>> loopJobs;
-
-static std::vector<std::vector<jobData>> jobThreadQueueVector;
-static std::vector<std::mutex> mutexList;
-
-// static std::atomic<int> jobCount = 0;
-static int jobCount = 0;
-
-static std::atomic<int> loopJobsCount = 0;
-static std::atomic<int> loopJobsLeftToComplete = 0;
 
 static std::vector<std::thread> threads;
 
 static std::atomic<int> idleThreads;
-// static int idleThreads;
 static std::atomic<int> usableThreads;
-// static int usableThreads;
-//
-//
-// std::vector<std::vector<int>> jobNumberLists(4);
-
-// static myVector<jobData> jobDataList;
-
 static int threadToGetJob;
 
 static std::atomic<int> futexVal = 0;
 
-// static void *listyThingy;
+static std::atomic<int> threadsStarted;
 
 static std::atomic<int> jobsDone;
 
 static listOfDynamicListsInt<jobData> *listPtr;
 
-bool *isWorking;
+static bool *isWorking;
+
+static int **jobNumbersPtr;
 
 void reqJobs(void (*func)()) {
-
-  // jobDataList.add({func});
 
   if (threadToGetJob == usableThreads) {
     threadToGetJob = 0;
@@ -96,12 +71,18 @@ void reqJobs(void (*func)()) {
   // std::cout << "DØØØØ" << std::endl;
   threadToGetJob++;
 
-  ++jobCount;
+  //++jobCount;
 }
+
+
 
 static void createWorkerThread(int id) {
 
   int jobNumber = 0;
+
+  jobNumbersPtr[id] = &jobNumber;
+
+  threadsStarted.fetch_add(1);
 
   while (!shouldShutDown) {
 
@@ -119,6 +100,7 @@ static void createWorkerThread(int id) {
       syscall(SYS_futex, &futexVal, FUTEX_WAIT, 0);
 #elif __APPLE__
 
+      //workStealing();
       // idleThreads.fetch_add(1);
       isWorking[id] = false;
       dispatch_semaphore_wait(sems[id], DISPATCH_TIME_FOREVER);
@@ -127,20 +109,17 @@ static void createWorkerThread(int id) {
       goto back;
     }
 
-  bb:
 
     jobData jobdata = listPtr->getJob(id, jobNumber);
-    auto job = jobdata.func;
+    //auto job = jobdata.func;
 
-    if (job == nullptr) {
-      std::cerr << "job == null not god. Will Retry" << std::endl;
-      goto bb;
-    }
-    job();
+
+    jobdata.func();
 
     jobNumber++;
+
 #if DEBUGMODE
-    jobsDone.fetch_add(1);
+    // jobsDone.fetch_add(1);
 #endif
     // std::cout << "amount of jobs : " << jobCount << std::endl;
     // std::cout << "job is done JOB NumBer : " << jobsDone.load() << std::endl;
@@ -151,19 +130,10 @@ static void createWorkerThread(int id) {
 void initJobsSystem() {
   // usableThreads = std::thread::hardware_concurrency();
   // jobDataList.resize(50000);
-  usableThreads = 6; // for testing
-  std::cout << usableThreads << std::endl;
+  usableThreads = 4; // for testing
   if (usableThreads == 1) {
     throw std::runtime_error("Not enough threads for multithreading.");
   }
-#if DEBUGMODE
-  std::cout << " total threads: " << usableThreads << std::endl;
-#endif
-
-  usableThreads -= 1;
-
-  if (usableThreads > 4)
-    usableThreads -= 1;
 
 #if DEBUGMODE
   std::cout << " Threads program will use : " << usableThreads << std::endl;
@@ -179,54 +149,38 @@ void initJobsSystem() {
 
   isWorking = new bool[usableThreads];
 
+#ifdef __APPLE__
   sems = new dispatch_semaphore_t[usableThreads];
   for (int i = 0; i < usableThreads; i++) {
     sems[i] = dispatch_semaphore_create(0);
   }
+#endif
+
+  jobNumbersPtr = new int *[usableThreads];
+  for (int i = 0; i < threads.size(); i++) {
+
+    threads[i] = std::thread(createWorkerThread, i);
+
+    std::cout << "thread : " << " started" << std::endl;
+  }
 }
 
-/*void parallelLoop(int stat, int end, std::function<void(int)> code, // old
-logic needs to be fixed at some point int jobsToCreate, bool wait) { int count =
-end - stat; int remainder = count % jobsToCreate; count -= remainder; int
-loopChunk = (count / (jobsToCreate)); loopJobsCount += jobsToCreate;
-  // loopJobsLeftToComplete += jobsToCreate;
-
-  for (int job = 0; job < jobsToCreate; job++) {
-    int countStart = loopChunk * job + stat;
-    int countEnd = loopChunk + countStart;
-
-    if (job == jobsToCreate - 1)
-      countEnd += remainder;
-
-    submitloopJob([code, countStart, countEnd]() {
-      for (int i = countStart; i < countEnd; i++) {
-        code(i);
-      }
-    });
-  }
-
-  if (wait) {
-    waitForLoopJobs();
-  }
-}*/
-
-void doJobs() {
+/*void doJobs() {
 
   for (int i = 0; i < threads.size(); i++) {
     threads[i] = std::thread(createWorkerThread, i);
 
-    std::vector<jobData> data;
-    jobThreadQueueVector.push_back(data);
-
     std::cout << "thread : " << " started" << std::endl;
   }
   // probaly gonna remove this
-}
+}*/
 
 void waitAllJobs() {
 
+#if DEBUGMODE
   std::cout << "SATRTED WAIT " << std::endl;
-bb:
+#endif
+retry:
 
   for (int x = 0; x < 100; x++) {
     std::this_thread::yield();
@@ -234,11 +188,11 @@ bb:
 
   for (int z = 0; z < usableThreads; z++) {
     if (isWorking[z]) {
-      goto bb;
+      goto retry;
     }
   }
 
-#ifdef DEBUGMODE
+#if DEBUGMODE
   std::cout << "DONE JOBS : " << jobsDone << std::endl;
 #endif
 }
@@ -262,4 +216,19 @@ void shutdownJobsSystem() {
       threads[i].join();
     }
   }
+  delete listPtr;
+
+  delete[] isWorking;
+  delete[] jobNumbersPtr;
+
+#ifdef __APPLE__
+  delete[] sems;
+#endif
+}
+
+void clear() {
+  for (int x = 0; x < usableThreads; x++) {
+    *jobNumbersPtr[x] = 0;
+  }
+  listPtr->clear();
 }

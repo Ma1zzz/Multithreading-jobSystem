@@ -28,7 +28,7 @@ void PrimeCalculation3() {
 std::atomic<int> jobN;
 void PrimeCalculation4() {
   int count = 0;
-  for (int n = 2; n < 500; n++) {
+  for (int n = 2; n < 50; n++) {
     bool isPrime = true;
     for (int i = 2; i <= sqrt(n); i++) {
       if (n % i == 0) {
@@ -41,7 +41,7 @@ void PrimeCalculation4() {
   }
   // jobN++;
   //  std::cout << "job Number : " << jobN << std::endl;
-  //  std::cout << "Found " << count << " primes\n";
+  // std::cout << "Found " << count << " primes\n";
 }
 
 void noCodeTest() {}
@@ -64,35 +64,34 @@ int main() {
 
   // DEFINE_JOB(PrimeCalculation4, nullptr, 0);
   //  auto start = std::chrono::high_resolution_clock::now();
-  doJobs();
+  // doJobs();
 
-  auto rgestart = std::chrono::high_resolution_clock::now();
+ /* auto rgestart = std::chrono::high_resolution_clock::now();
   for (int x = 0; x < 50000; x++) {
 
     // reqJobs(PrimeCalculation4);
     reqJobs(noCodeTest);
-    //                    std::cout << x << std::endl;
-    //                   noCodeTest();
-    //  PrimeCalculation4();
+    //                        std::cout << x << std::endl;
+    //                       noCodeTest();
+    // PrimeCalculation4();
   }
   std::cout << "done adding jobs" << std::endl;
   auto rqe = std::chrono::high_resolution_clock::now();
   auto dur = duration_cast<std::chrono::microseconds>(rqe - rgestart);
-  std::cout << "microseconds : " << dur.count() << std::endl;
+  std::cout << "microseconds : " << dur.count() << std::endl;*/
 
-  //  sleep(1);
-  //  PrimeCalculation4();
+  for (int x = 0; x < 1000; x++) {
+    for (int z = 0; z < 50000; z++) {
+      reqJobs(noCodeTest);
+    }
 
-  // PrimeCalculation4();
-  // sleep(1);
-  waitAllJobs();
-  //  std::cout << "er noget her til " << std::endl;
-
-  //  shutdownJobsSystem();
-  // std::cout << "number : " << count << std::endl;
+    waitAllJobs();
+    clear();
+  }
+  //waitAllJobs();
   auto stop = std::chrono::high_resolution_clock::now();
   auto duration = duration_cast<std::chrono::milliseconds>(stop - start);
-  std::cout << "milliseconds : " << duration.count() << std::endl;
+  std::cout << "milliseconds : " << (duration.count()/1000) << std::endl;
 
   shutdownJobsSystem();
   std::cout << jobN << std::endl;

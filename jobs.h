@@ -9,3 +9,5 @@ void doJobs();
 void waitAllJobs();
 
 void shutdownJobsSystem();
+
+void clear();
