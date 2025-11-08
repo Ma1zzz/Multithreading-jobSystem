@@ -1,13 +1,13 @@
 #pragma once
 
-void reqJobs(void (*func)());
+namespace jobSystem {
+void reqJob(void (*func)());
 
-void initJobsSystem();
-
-void doJobs();
+void init(int totalThreads);
 
 void waitAllJobs();
 
-void shutdownJobsSystem();
+void shutdown();
 
 void clear();
+} // namespace jobSystem

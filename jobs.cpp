@@ -4,31 +4,23 @@
 #include "thread"
 #include <algorithm>
 #include <atomic>
-#include <chrono>
-#include <functional>
 #include <iostream>
-#include <limits.h>
 #ifdef __linux__
 #include <linux/futex.h>
 #elif __APPLE__
 #include <dispatch/dispatch.h>
-dispatch_semaphore_t *sems; //= dispatch_semaphore_create(0);
+static dispatch_semaphore_t *sems;
 #endif
-#include <mutex>
-#include <queue>
-#include <sys/syscall.h>
+
 #include <thread>
 #include <vector>
 
-
+namespace jobSystem {
 
 static bool shouldShutDown = false;
 
-static std::queue<std::function<void()>> loopJobs;
-
 static std::vector<std::thread> threads;
 
-static std::atomic<int> idleThreads;
 static std::atomic<int> usableThreads;
 static int threadToGetJob;
 
@@ -38,18 +30,18 @@ static std::atomic<int> threadsStarted;
 
 static std::atomic<int> jobsDone;
 
-static listOfDynamicListsInt<jobData> *listPtr;
+static listOfDynamicListsInt *jobListsPtr;
 
 static bool *isWorking;
 
-static int **jobNumbersPtr;
+static std::atomic<int> **jobNumbersPtr;
 
-void reqJobs(void (*func)()) {
+void reqJob(void (*func)()) {
 
   if (threadToGetJob == usableThreads) {
     threadToGetJob = 0;
   }
-  listPtr->add(threadToGetJob, {func});
+  jobListsPtr->add(threadToGetJob, {func});
 
   // futexVal++;
 #ifdef __linux__
@@ -69,16 +61,44 @@ void reqJobs(void (*func)()) {
 #endif
 
   // std::cout << "DØØØØ" << std::endl;
-  threadToGetJob++;
 
+  threadToGetJob++;
   //++jobCount;
 }
 
+static bool steelWork(int id, bool isMain = false) {
 
+  for (int i = 0; i < usableThreads; ++i) {
+    if (id == i && !isMain)
+      continue;
+    if (threadsStarted != usableThreads)
+      continue;
+
+    std::atomic<int> *ptr = jobNumbersPtr[i];
+
+    // std::cout << ptr << std::endl;
+    if (!jobListsPtr->isAtEnd(i, ptr)) {
+
+      jobData jobdata = jobListsPtr->getJob(i, ptr);
+      // auto job = jobdata.func;
+
+      if (jobdata.func == nullptr) {
+        // std::cout << *ptr << std::endl;
+        // std::cout << "oh no " << std::endl;
+        return false;
+      }
+      // std::cout << "did things" << std::endl;
+      jobdata.func();
+      return true;
+    }
+  }
+
+  return false;
+}
 
 static void createWorkerThread(int id) {
 
-  int jobNumber = 0;
+  std::atomic<int> jobNumber = 0;
 
   jobNumbersPtr[id] = &jobNumber;
 
@@ -86,22 +106,25 @@ static void createWorkerThread(int id) {
 
   while (!shouldShutDown) {
 
-    // std::cout << "jobCount : " << jobCount << std::endl;
-    // idleThreads++;
+  // std::cout << "jobCount : " << jobCount << std::endl;
+  // idleThreads++;
   back:
     if (shouldShutDown) {
       // std::cout << "THREAD IS GOING BYE BYE" << std::endl;
       break;
     }
 
-    if (listPtr->isAtEnd(id, jobNumber)) {
+    if (jobListsPtr->isAtEnd(id, &jobNumber)) {
       ////std::cout << "OOOOOOOOOOOOO" << std::endl;
 #ifdef __linux__
       syscall(SYS_futex, &futexVal, FUTEX_WAIT, 0);
 #elif __APPLE__
 
-      //workStealing();
-      // idleThreads.fetch_add(1);
+      //  idleThreads.fetch_add(1);
+      if (steelWork(id)) {
+        goto back;
+      }
+
       isWorking[id] = false;
       dispatch_semaphore_wait(sems[id], DISPATCH_TIME_FOREVER);
       // idleThreads.fetch_sub(1);
@@ -109,14 +132,15 @@ static void createWorkerThread(int id) {
       goto back;
     }
 
+    jobData jobdata = jobListsPtr->getJob(id, &jobNumber);
+    // auto job = jobdata.func;
 
-    jobData jobdata = listPtr->getJob(id, jobNumber);
-    //auto job = jobdata.func;
+    if (jobdata.func != nullptr) {
+      jobdata.func();
+    }
+    // jobNumber++;
 
-
-    jobdata.func();
-
-    jobNumber++;
+    // std::cout << jobNumber << std::endl;
 
 #if DEBUGMODE
     // jobsDone.fetch_add(1);
@@ -127,10 +151,10 @@ static void createWorkerThread(int id) {
   // std::cout << "THREAD WANNA DIEEE" << std::endl;
 }
 
-void initJobsSystem() {
+void init(int totalThreads) {
   // usableThreads = std::thread::hardware_concurrency();
-  // jobDataList.resize(50000);
-  usableThreads = 4; // for testing
+  // usableThreads = 3; // for testing
+  usableThreads = totalThreads - 1; // -1 for the main thread
   if (usableThreads == 1) {
     throw std::runtime_error("Not enough threads for multithreading.");
   }
@@ -143,9 +167,10 @@ void initJobsSystem() {
   // freeThreads.resize(usableThreads, true);
   shouldShutDown = false;
 
-  listOfDynamicListsInt<jobData> *dl =
-      new listOfDynamicListsInt<jobData>(usableThreads);
-  listPtr = dl;
+  listOfDynamicListsInt *dl = new listOfDynamicListsInt(usableThreads);
+  jobListsPtr = dl;
+
+  // jobListsPtr = new listOfDynamicListsInt(usableThreads);
 
   isWorking = new bool[usableThreads];
 
@@ -156,7 +181,7 @@ void initJobsSystem() {
   }
 #endif
 
-  jobNumbersPtr = new int *[usableThreads];
+  jobNumbersPtr = new std::atomic<int> *[usableThreads];
   for (int i = 0; i < threads.size(); i++) {
 
     threads[i] = std::thread(createWorkerThread, i);
@@ -164,16 +189,6 @@ void initJobsSystem() {
     std::cout << "thread : " << " started" << std::endl;
   }
 }
-
-/*void doJobs() {
-
-  for (int i = 0; i < threads.size(); i++) {
-    threads[i] = std::thread(createWorkerThread, i);
-
-    std::cout << "thread : " << " started" << std::endl;
-  }
-  // probaly gonna remove this
-}*/
 
 void waitAllJobs() {
 
@@ -188,6 +203,7 @@ retry:
 
   for (int z = 0; z < usableThreads; z++) {
     if (isWorking[z]) {
+      steelWork(99, true); // id does not matter here
       goto retry;
     }
   }
@@ -197,7 +213,7 @@ retry:
 #endif
 }
 
-void shutdownJobsSystem() {
+void shutdown() {
 
   shouldShutDown = true;
 
@@ -216,7 +232,7 @@ void shutdownJobsSystem() {
       threads[i].join();
     }
   }
-  delete listPtr;
+  delete jobListsPtr;
 
   delete[] isWorking;
   delete[] jobNumbersPtr;
@@ -230,5 +246,6 @@ void clear() {
   for (int x = 0; x < usableThreads; x++) {
     *jobNumbersPtr[x] = 0;
   }
-  listPtr->clear();
+  jobListsPtr->clear();
 }
+} // namespace jobSystem
